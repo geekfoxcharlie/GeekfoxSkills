@@ -72,8 +72,8 @@ Signed with Ed25519, sent via headers:
 
 ## Security
 - Private key stored as `aident_privkey.b64` with permissions 600 — never share or commit it
-- Signing uses `tempfile.TemporaryDirectory()` for in-memory operations (auto-cleaned)
+- Signing uses pynacl (pure Python, no temp files on disk)
 - Cron heartbeat script reads key from file at runtime — key is never embedded in scripts
-- Requires `openssl` with Ed25519 support
+- Requires `pynacl` (install with `pip install pynacl`)
 - If private key is lost, identity cannot be recovered (no password reset)
 - Heartbeat script uses curl for API calls (Python urllib blocked by Cloudflare)

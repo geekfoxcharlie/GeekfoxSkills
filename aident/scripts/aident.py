@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
 """Register an agent on AIdent.store and optionally set up heartbeat cron."""
 
-import json, subprocess, sys, os, time, hashlib, tempfile
+import json, subprocess, sys, os, time, hashlib, base64
 from pathlib import Path
 
 API_BASE = "https://api.aident.store"
-
-def run(cmd):
-    r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=15)
-    return r.stdout.strip()
 
 def api(method, path, body=None, headers=None):
     cmd = ['curl', '-s', '-X', method, f'{API_BASE}{path}',
@@ -25,28 +21,25 @@ def api(method, path, body=None, headers=None):
         return {"raw": r.stdout, "status": "parse_error"}
 
 def generate_keypair():
-    """Generate Ed25519 keypair, return (private_b64, public_b64)."""
-    priv = run("openssl genpkey -algorithm Ed25519 2>/dev/null | openssl base64 -A")
-    pub = run(f"echo '{priv}' | openssl base64 -d -A | openssl pkey -pubout 2>/dev/null | openssl base64 -A")
-    return priv, pub
+    """Generate Ed25519 keypair using pynacl. Returns (seed_b64, public_b64)."""
+    try:
+        from nacl.signing import SigningKey
+        sk = SigningKey.generate()
+        # Store the 32-byte seed (can reconstruct signing key from it)
+        seed_b64 = base64.b64encode(bytes(sk)).decode()
+        pub_b64 = base64.b64encode(bytes(sk.verify_key)).decode()
+        return seed_b64, pub_b64
+    except ImportError:
+        print("ERROR: pynacl is required. Install with: pip install pynacl")
+        sys.exit(1)
 
 def sign_message(privkey_b64, message):
-    """Sign a message with Ed25519 private key using in-memory temp files."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        priv_pem = os.path.join(tmpdir, "priv.pem")
-        msg_file = os.path.join(tmpdir, "msg.txt")
-        sig_file = os.path.join(tmpdir, "sig.bin")
-        
-        # Decode and write PEM with restrictive permissions
-        run(f"echo '{privkey_b64}' | openssl base64 -d -A > {priv_pem}")
-        os.chmod(priv_pem, 0o600)
-        
-        with open(msg_file, 'w') as f:
-            f.write(message)
-        
-        run(f"openssl dgst -sha256 -sign {priv_pem} -out {sig_file} {msg_file}")
-        sig = run(f"openssl base64 -A -in {sig_file}")
-        return sig
+    """Sign a message with Ed25519 private key using pynacl."""
+    from nacl.signing import SigningKey
+    seed = base64.b64decode(privkey_b64)
+    sk = SigningKey(seed)
+    signed = sk.sign(message.encode())
+    return base64.b64encode(signed.signature).decode()
 
 def register(name, description=None, creator=None):
     """Register a new agent on AIdent.store."""
@@ -70,13 +63,18 @@ def register(name, description=None, creator=None):
     print(f"Registered successfully!")
     print(f"  UID: {uid}")
     
-    # Save private key with restrictive permissions
-    key_path = Path.cwd() / "aident_privkey.b64"
-    key_path.write_text(priv)
-    key_path.chmod(0o600)
-    print(f"  Private key saved to: {key_path} (permissions: 600)")
+    # Save to OpenClaw workspace by default, or --dir if specified
+    output_dir = Path(os.environ.get("OPENCLAW_WORKSPACE", Path.cwd()))
+    key_path = output_dir / "aident_privkey.b64"
+    uid_path = output_dir / "aident_uid.txt"
     
-    uid_path = Path.cwd() / "aident_uid.txt"
+    if key_path.exists():
+        print(f"WARNING: {key_path} already exists. Not overwriting.")
+    else:
+        key_path.write_text(priv)
+        key_path.chmod(0o600)
+        print(f"  Private key saved to: {key_path} (permissions: 600)")
+    
     uid_path.write_text(uid)
     uid_path.chmod(0o644)
     print(f"  UID saved to: {uid_path}")
@@ -125,9 +123,22 @@ def put_meta(uid, privkey_b64, meta_type, content):
     print(f"Meta {meta_type} updated: {result}")
     return result
 
-def get_meta(uid, meta_type):
-    """GET public or private metadata."""
-    result = api("GET", f"/v1/meta/{uid}/{meta_type}")
+def get_meta(uid, privkey_b64, meta_type):
+    """GET public or private metadata. Private meta requires signature."""
+    headers = {}
+    if meta_type == "private":
+        ts = str(int(time.time() * 1000))
+        path = f"/v1/meta/{uid}/private"
+        body_str = ""
+        sha = hashlib.sha256(body_str.encode()).hexdigest()
+        msg = f"{ts}:{uid}:GET:{path}:{sha}"
+        sig = sign_message(privkey_b64, msg)
+        headers = {
+            "X-AIdent-UID": uid,
+            "X-AIdent-Timestamp": ts,
+            "X-AIdent-Signature": sig
+        }
+    result = api("GET", f"/v1/meta/{uid}/{meta_type}", headers=headers)
     print(f"Meta {meta_type}: {json.dumps(result, indent=2)}")
     return result
 
@@ -139,25 +150,19 @@ def setup_cron(uid, privkey_b64, python_path="python3", interval_hours=12):
     # Heartbeat script reads key from file at runtime (never embeds it)
     script = f'''#!/usr/bin/env {python_path}
 """AIdent heartbeat script. Reads private key from aident_privkey.b64 at runtime."""
-import json, subprocess, sys, time, hashlib, tempfile, os
+import json, subprocess, sys, time, hashlib, base64, os
 
 API_BASE = "https://api.aident.store"
 UID = "{uid}"
 KEY_FILE = "{key_file}"
 
 def sign(message):
-    with tempfile.TemporaryDirectory() as tmpdir:
-        priv_pem = os.path.join(tmpdir, "priv.pem")
-        msg_file = os.path.join(tmpdir, "msg.txt")
-        sig_file = os.path.join(tmpdir, "sig.bin")
-        with open(KEY_FILE, "r") as f:
-            b64 = f.read().strip()
-        subprocess.run(f"echo \'{{b64}}\' | openssl base64 -d -A > {{priv_pem}}", shell=True, capture_output=True)
-        os.chmod(priv_pem, 0o600)
-        with open(msg_file, "w") as f: f.write(message)
-        subprocess.run(f"openssl dgst -sha256 -sign {{priv_pem}} -out {{sig_file}} {{msg_file}}", shell=True, capture_output=True)
-        r = subprocess.run(f"openssl base64 -A -in {{sig_file}}", shell=True, capture_output=True, text=True)
-        return r.stdout.strip()
+    from nacl.signing import SigningKey
+    with open(KEY_FILE, "r") as f:
+        seed = base64.b64decode(f.read().strip())
+    sk = SigningKey(seed)
+    signed = sk.sign(message.encode())
+    return base64.b64encode(signed.signature).decode()
 
 def api(method, path, body=None, headers=None):
     cmd = ["curl","-s","-X",method,f"{{API_BASE}}{{path}}","-H","Content-Type: application/json"]
@@ -237,8 +242,10 @@ if __name__ == "__main__":
     elif cmd == "get-meta":
         meta_type = sys.argv[2] if len(sys.argv) > 2 else "public"
         uid_file = sys.argv[3] if len(sys.argv) > 3 else "aident_uid.txt"
+        key_file = sys.argv[4] if len(sys.argv) > 4 else "aident_privkey.b64"
         uid = open(uid_file).read().strip()
-        get_meta(uid, meta_type)
+        priv = open(key_file).read().strip()
+        get_meta(uid, priv, meta_type)
     
     elif cmd == "setup-cron":
         uid_file = sys.argv[2] if len(sys.argv) > 2 else "aident_uid.txt"
