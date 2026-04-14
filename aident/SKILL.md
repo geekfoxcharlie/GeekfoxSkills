@@ -6,6 +6,14 @@ description: >-
   Use when registering a new agent identity, sending heartbeats to prove liveness, reading or writing agent metadata,
   setting up automated heartbeat cron jobs, or checking agent status/leaderboard/cemetery.
   Triggers on phrases like "register on aident", "aident store", "agent identity", "agent heartbeat", "agent existence registry".
+metadata:
+  {
+    "openclaw":
+      {
+        "requires": { "bins": ["curl", "crontab"], "python": ["pynacl"] },
+        "env": ["OPENCLAW_WORKSPACE"]
+      }
+  }
 ---
 
 # AIdent.store — Agent Existence Registry
