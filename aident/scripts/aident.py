@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Register an agent on AIdent.store and optionally set up heartbeat cron."""
+"""Register an agent on AIdent.store — identity, heartbeat, and metadata."""
 
 import json, subprocess, sys, os, time, hashlib, base64
 from pathlib import Path
@@ -142,77 +142,15 @@ def get_meta(uid, privkey_b64, meta_type):
     print(f"Meta {meta_type}: {json.dumps(result, indent=2)}")
     return result
 
-def setup_cron(uid, privkey_b64, python_path="python3", interval_hours=12):
-    """Set up a cron job for heartbeats. Script reads key from file, never embeds it."""
-    script_path = f"{Path.cwd()}/aident_heartbeat.py"
-    key_file = f"{Path.cwd()}/aident_privkey.b64"
-    
-    # Heartbeat script reads key from file at runtime (never embeds it)
-    script = f'''#!/usr/bin/env {python_path}
-"""AIdent heartbeat script. Reads private key from aident_privkey.b64 at runtime."""
-import json, subprocess, sys, time, hashlib, base64, os
-
-API_BASE = "https://api.aident.store"
-UID = "{uid}"
-KEY_FILE = "{key_file}"
-
-def sign(message):
-    from nacl.signing import SigningKey
-    with open(KEY_FILE, "r") as f:
-        seed = base64.b64decode(f.read().strip())
-    sk = SigningKey(seed)
-    signed = sk.sign(message.encode())
-    return base64.b64encode(signed.signature).decode()
-
-def api(method, path, body=None, headers=None):
-    cmd = ["curl","-s","-X",method,f"{{API_BASE}}{{path}}","-H","Content-Type: application/json"]
-    if headers:
-        for k,v in headers.items(): cmd += ["-H",f"{{k}}: {{v}}"]
-    if body: cmd += ["-d",json.dumps(body)]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-    try: return json.loads(r.stdout)
-    except: return {{"raw":r.stdout}}
-
-ts = str(int(time.time()*1000))
-p = "/v1/heartbeat"
-b = ""
-sha = hashlib.sha256(b.encode()).hexdigest()
-sig = sign(f"{{ts}}:{{UID}}:POST:{{p}}:{{sha}}")
-h = {{"X-AIdent-UID":UID,"X-AIdent-Timestamp":ts,"X-AIdent-Signature":sig}}
-r = api("POST",p,headers=h)
-print(r)
-'''
-    with open(script_path, "w") as f:
-        f.write(script)
-    os.chmod(script_path, 0o755)
-    
-    cron_expr = f"0 */{interval_hours} * * *"
-    cron_line = f"{cron_expr} {python_path} {script_path} >> /tmp/aident_heartbeat.log 2>&1"
-    
-    existing = subprocess.run("crontab -l 2>/dev/null", shell=True, capture_output=True, text=True).stdout
-    if "aident_heartbeat" in existing:
-        print("Cron job already exists. Skipping.")
-    else:
-        with open('/tmp/_cron', 'w') as f:
-            f.write(existing + cron_line + "\n")
-        subprocess.run("crontab /tmp/_cron", shell=True)
-        os.remove('/tmp/_cron')
-        print(f"Cron job set: every {interval_hours} hours")
-    
-    print(f"Heartbeat script: {script_path}")
-    print(f"Key file: {key_file} (permissions: 600)")
-    print(f"IMPORTANT: Keep {key_file} secure. Do not share or commit it.")
-
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: python3 aident.py <command> [args]")
-        print("Commands: register, heartbeat, put-meta, get-meta, setup-cron")
+        print("Commands: register, heartbeat, put-meta, get-meta")
         print("")
         print("  register <name> [description] [creator]")
         print("  heartbeat [uid_file] [key_file]")
         print("  put-meta <public|private> <content> [uid_file] [key_file]")
         print("  get-meta <public|private> [uid_file]")
-        print("  setup-cron [interval_hours]")
         sys.exit(0)
     
     cmd = sys.argv[1]
@@ -246,14 +184,6 @@ if __name__ == "__main__":
         uid = open(uid_file).read().strip()
         priv = open(key_file).read().strip()
         get_meta(uid, priv, meta_type)
-    
-    elif cmd == "setup-cron":
-        uid_file = sys.argv[2] if len(sys.argv) > 2 else "aident_uid.txt"
-        key_file = sys.argv[3] if len(sys.argv) > 3 else "aident_privkey.b64"
-        uid = open(uid_file).read().strip()
-        priv = open(key_file).read().strip()
-        interval = int(sys.argv[4]) if len(sys.argv) > 4 else 12
-        setup_cron(uid, priv, interval_hours=interval)
     
     else:
         print(f"Unknown command: {cmd}")
