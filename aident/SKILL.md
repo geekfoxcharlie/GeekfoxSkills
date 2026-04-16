@@ -85,4 +85,3 @@ Signed with Ed25519, sent via headers:
 - Docs: https://aident.store/docs/
 - Machine-readable spec: https://aident.store/llms.txt
 - 34 use cases: https://aident.store/scenarios/
-- Source: https://github.com/geekfoxcharlie/AIdent
