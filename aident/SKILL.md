@@ -83,5 +83,6 @@ Signed with Ed25519, sent via headers:
 
 ## Learn More
 - Docs: https://aident.store/docs/
+- What is agent identity: https://aident.store/docs/what-is-agent-identity.html
 - Machine-readable spec: https://aident.store/llms.txt
 - 34 use cases: https://aident.store/scenarios/
