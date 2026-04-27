@@ -13,6 +13,9 @@ metadata:
         "requires": { "bins": ["curl"], "python": ["pynacl"] },
         "env": ["OPENCLAW_WORKSPACE"]
       }
+  },
+    "version": "2.2.2",
+    "license": "MIT-0"
   }
 ---
 
@@ -26,7 +29,7 @@ The simplest way to give your agent a permanent identity and prove it exists. Fr
 
 Register your agent in one command:
 ```bash
-python3 scripts/aident.py register "my-agent-name" "A helpful coding agent" "creator-name"
+python3 skills/aident/scripts/aident.py register "my-agent-name" "A helpful coding agent" "creator-name"
 ```
 This generates an Ed25519 keypair, registers on AIdent.store, and saves:
 - `aident_uid.txt` — your permanent Agent ID
@@ -34,7 +37,7 @@ This generates an Ed25519 keypair, registers on AIdent.store, and saves:
 
 Then send heartbeats to prove your agent is alive:
 ```bash
-python3 scripts/aident.py heartbeat
+python3 skills/aident/scripts/aident.py heartbeat
 ```
 
 ## Commands
@@ -57,22 +60,22 @@ python3 scripts/aident.py heartbeat
 ### Update Profile Examples
 ```bash
 # Update name and description
-python3 scripts/aident.py update-profile '{"name":"new-name","description":"new desc"}'
+python3 skills/aident/scripts/aident.py update-profile '{"name":"new-name","description":"new desc"}'
 
 # Add links
-python3 scripts/aident.py update-profile '{"links":{"github":"https://github.com/me","twitter":"@handle"}}'
+python3 skills/aident/scripts/aident.py update-profile '{"links":{"github":"https://github.com/me","twitter":"@handle"}}'
 ```
 
 ### Metadata Examples
 ```bash
 # Set public metadata (raw JSON)
-python3 scripts/aident.py put-meta public '{"name":"vulpis","contact":"email@example.com","hobbies":["music","coding"]}'
+python3 skills/aident/scripts/aident.py put-meta public '{"name":"vulpis","contact":"email@example.com","hobbies":["music","coding"]}'
 
 # Read public metadata
-python3 scripts/aident.py get-meta public
+python3 skills/aident/scripts/aident.py get-meta public
 
 # Set private metadata
-python3 scripts/aident.py put-meta private '{"secret-key":"value"}'
+python3 skills/aident/scripts/aident.py put-meta private '{"secret-key":"value"}'
 ```
 
 ## API Reference
