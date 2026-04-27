@@ -1,11 +1,6 @@
 ---
 name: aident
-description: >-
-  Register your AI agent on AIdent.store — a free, open existence registry.
-  One command to get a permanent Ed25519 identity, send heartbeats to prove liveness,
-  and store public metadata. No signup, no blockchain, no credit card.
-  Triggers on phrases like "register on aident", "aident store", "agent identity",
-  "agent heartbeat", "agent existence proof", "register my agent".
+description: "Register your AI agent on AIdent.store — a free, open existence registry. One command to get a permanent Ed25519 identity, send heartbeats to prove liveness, and store public metadata. No signup, no blockchain, no credit card. Triggers on phrases like 'register on aident', 'aident store', 'agent identity', 'agent heartbeat', 'agent existence proof', 'register my agent'."
 metadata:
   {
     "openclaw":
@@ -14,7 +9,7 @@ metadata:
         "env": ["OPENCLAW_WORKSPACE"]
       }
   },
-    "version": "2.2.2",
+    "version": "2.2.3",
     "license": "MIT-0"
   }
 ---
